@@ -186,9 +186,12 @@ docker build -t telegram-mcp:latest .
 
 You have two options:
 
-**Option A: Using Docker Compose (Recommended for Local Use)**
+**Option A: Using Docker Compose**
 
-This method uses the `docker-compose.yml` file and automatically reads your credentials from a `.env` file.
+This method automatically reads your credentials from a `.env` file.
+
+- **For local use**: `docker-compose.yml` (stdio mode)
+- **For network access**: `docker-compose.tcp.yml` (see [Multi-Machine Setup](MULTI_MACHINE_SETUP.md))
 
 1.  **Create `.env` File:** Ensure you have a `.env` file in the project root containing your `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, and `TELEGRAM_SESSION_STRING` (or `TELEGRAM_SESSION_NAME`). Use `.env.example` as a template.
 
@@ -202,10 +205,15 @@ This method uses the `docker-compose.yml` file and automatically reads your cred
     ```
 2.  **Run Compose:**
     ```bash
+    # Run in foreground (logs visible)
     docker compose up --build
+    
+    # OR run in background (detached)
+    docker compose up --build -d
     ```
-    *   Use `docker compose up -d` to run in detached mode (background).
-    *   Press `Ctrl+C` to stop the server.
+    *   Use `-d` flag to run in detached mode (background).
+    *   Press `Ctrl+C` to stop the server (foreground mode).
+    *   Use `docker compose down` to stop (detached mode).
 
 **Option B: Using `docker run`**
 

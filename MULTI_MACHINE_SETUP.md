@@ -45,8 +45,21 @@ This guide explains how to set up Telegram MCP server on one machine and access 
    ```
 
 4. **Start the server with network access:**
+   
+   ⚠️ **Important**: Use `docker-compose.tcp.yml` (not `docker-compose.yml`) for network access!
+   
    ```bash
+   # Run in foreground (logs visible)
    docker-compose -f docker-compose.tcp.yml up --build
+   
+   # OR run in background (detached)
+   docker-compose -f docker-compose.tcp.yml up --build -d
+   
+   # Check if running
+   docker-compose -f docker-compose.tcp.yml ps
+   
+   # Stop the server
+   docker-compose -f docker-compose.tcp.yml down
    ```
 
 ### Client Machine Setup
