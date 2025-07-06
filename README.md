@@ -215,6 +215,14 @@ docker run -it --rm \
 
 ---
 
+## 🌐 Multi-Machine Network Setup
+
+For running the server on one machine and accessing it from multiple machines on the same network, see the [Multi-Machine Setup Guide](MULTI_MACHINE_SETUP.md).
+
+**Security Note:** The default configuration is secure (localhost-only). Network access requires explicit configuration.
+
+---
+
 ## ⚙️ Configuration for Claude & Cursor
 
 ### MCP Configuration

@@ -52,6 +52,11 @@ TELEGRAM_SESSION_NAME = os.getenv("TELEGRAM_SESSION_NAME")
 # Check if a string session exists in environment, otherwise use file-based session
 SESSION_STRING = os.getenv("TELEGRAM_SESSION_STRING")
 
+# MCP Server configuration
+MCP_SERVER_MODE = os.getenv("MCP_SERVER_MODE", "stdio").lower()  # stdio or tcp
+MCP_SERVER_HOST = os.getenv("MCP_SERVER_HOST", "127.0.0.1")  # Default to localhost for security
+MCP_SERVER_PORT = int(os.getenv("MCP_SERVER_PORT", "8765"))
+
 mcp = FastMCP("telegram")
 
 if SESSION_STRING:
@@ -2446,9 +2451,13 @@ if __name__ == "__main__":
             print("Starting Telegram client...")
             await client.start()
 
-            print("Telegram client started. Running MCP server...")
-            # Use the asynchronous entrypoint instead of mcp.run()
-            await mcp.run_stdio_async()
+            if MCP_SERVER_MODE == "tcp":
+                print(f"Telegram client started. Running MCP server in TCP mode on {MCP_SERVER_HOST}:{MCP_SERVER_PORT}...")
+                await mcp.run_tcp_async(host=MCP_SERVER_HOST, port=MCP_SERVER_PORT)
+            else:
+                print("Telegram client started. Running MCP server in stdio mode...")
+                # Use the asynchronous entrypoint instead of mcp.run()
+                await mcp.run_stdio_async()
         except Exception as e:
             print(f"Error starting client: {e}", file=sys.stderr)
             if isinstance(e, sqlite3.OperationalError) and "database is locked" in str(e):

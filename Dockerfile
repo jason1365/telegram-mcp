@@ -40,8 +40,8 @@ ENV TELEGRAM_SESSION_NAME="telegram_mcp_session"
 # Or provide the session string directly
 ENV TELEGRAM_SESSION_STRING=""
 
-# Expose any ports if the application were a web server (not needed for stdio MCP)
-# EXPOSE 8000
+# Expose port for TCP mode (default 8765)
+EXPOSE 8765
 
 # Define the command to run the application
 CMD ["python", "main.py"] 

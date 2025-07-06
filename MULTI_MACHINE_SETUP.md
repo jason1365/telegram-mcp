@@ -1,0 +1,137 @@
+# Multi-Machine Docker Setup
+
+This guide explains how to set up Telegram MCP server on one machine and access it from multiple machines on the same network.
+
+## 🔒 Security Notice
+
+**By default, this server runs in secure localhost-only mode.** The multi-machine setup requires explicit configuration to expose network access. Always consider firewall rules and network security when exposing services.
+
+## 🚀 Quick Start
+
+### Server Machine Setup
+
+1. **Clone and prepare the repository:**
+   ```bash
+   git clone https://github.com/jason1365/telegram-mcp
+   cd telegram-mcp
+   ```
+
+2. **Configure environment for TCP mode:**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your Telegram credentials
+   ```
+
+3. **For network access, set these in your .env:**
+   ```env
+   MCP_SERVER_MODE=tcp
+   MCP_SERVER_HOST=0.0.0.0
+   MCP_SERVER_PORT=8765
+   ```
+
+4. **Start the server with network access:**
+   ```bash
+   docker-compose -f docker-compose.tcp.yml up --build
+   ```
+
+### Client Machine Setup
+
+Configure your MCP client to connect to the server's IP address:
+
+**For Claude Desktop** (`claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "telegram": {
+      "command": "node",
+      "args": ["-e", "const net = require('net'); const client = net.createConnection(8765, '192.168.1.100'); process.stdin.pipe(client); client.pipe(process.stdout);"],
+      "env": {}
+    }
+  }
+}
+```
+
+**For Cursor** (`mcp.json`):
+```json
+{
+  "mcpServers": {
+    "telegram": {
+      "command": "node",
+      "args": ["-e", "const net = require('net'); const client = net.createConnection(8765, '192.168.1.100'); process.stdin.pipe(client); client.pipe(process.stdout);"]
+    }
+  }
+}
+```
+
+Replace `192.168.1.100` with your server machine's IP address.
+
+## 📋 Configuration Options
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MCP_SERVER_MODE` | `stdio` | Set to `tcp` for network access |
+| `MCP_SERVER_HOST` | `127.0.0.1` | Bind address (use `0.0.0.0` for network access) |
+| `MCP_SERVER_PORT` | `8765` | TCP port for network mode |
+
+### Docker Compose Files
+
+- `docker-compose.yml` - Original secure setup (localhost only)
+- `docker-compose.tcp.yml` - Network-accessible setup with port exposure
+
+## 🛡️ Security Considerations
+
+1. **Firewall**: Configure firewall rules to restrict access to trusted networks
+2. **Network**: Use on trusted networks only
+3. **Authentication**: The MCP protocol itself doesn't include authentication
+4. **Monitoring**: Monitor network connections and server logs
+
+## 🔧 Troubleshooting
+
+### Connection Issues
+- Verify server is running: `docker ps`
+- Check server logs: `docker logs telegram-mcp-tcp`
+- Test connectivity: `telnet <server-ip> 8765`
+- Verify firewall allows port 8765
+
+### Client Configuration
+- Ensure correct server IP address in client config
+- Restart client application after configuration changes
+- Check client logs for connection errors
+
+## 📝 Example Complete Setup
+
+1. **Server (.env):**
+   ```env
+   TELEGRAM_API_ID=123456
+   TELEGRAM_API_HASH=your_hash_here
+   TELEGRAM_SESSION_STRING=your_session_string
+   MCP_SERVER_MODE=tcp
+   MCP_SERVER_HOST=0.0.0.0
+   MCP_SERVER_PORT=8765
+   ```
+
+2. **Start server:**
+   ```bash
+   docker-compose -f docker-compose.tcp.yml up -d
+   ```
+
+3. **Client config (replace IP):**
+   ```json
+   {
+     "mcpServers": {
+       "telegram": {
+         "command": "node",
+         "args": ["-e", "const net = require('net'); const client = net.createConnection(8765, '192.168.1.100'); process.stdin.pipe(client); client.pipe(process.stdout);"]
+       }
+     }
+   }
+   ```
+
+## 🔄 Switching Between Modes
+
+To switch from network mode back to local mode:
+1. Change `MCP_SERVER_MODE=stdio` in `.env`
+2. Use original `docker-compose.yml`: `docker-compose up --build`
+3. Update client configuration to use local setup
