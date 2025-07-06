@@ -191,6 +191,18 @@ You have two options:
 This method uses the `docker-compose.yml` file and automatically reads your credentials from a `.env` file.
 
 1.  **Create `.env` File:** Ensure you have a `.env` file in the project root containing your `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, and `TELEGRAM_SESSION_STRING` (or `TELEGRAM_SESSION_NAME`). Use `.env.example` as a template.
+
+    **Generate Session String (Required):**
+    ```bash
+    # Using Docker (no local dependencies needed) - uses existing generator script
+    ./generate_session.sh
+    
+    # OR manually with Docker:
+    docker run -it --rm -v $(pwd):/app -w /app python:3.13-alpine sh -c "pip install telethon python-dotenv && python session_string_generator.py"
+    
+    # OR using local Python (requires telethon installed)
+    python session_string_generator.py
+    ```
 2.  **Run Compose:**
     ```bash
     docker compose up --build

@@ -19,10 +19,31 @@ This guide explains how to set up Telegram MCP server on one machine and access 
 2. **Configure environment for TCP mode:**
    ```bash
    cp .env.example .env
-   # Edit .env with your Telegram credentials
+   # Edit .env with your Telegram credentials (see Session String Generation below)
    ```
 
-3. **For network access, set these in your .env:**
+3. **Generate Telegram Session String (Required):**
+
+   **Option A: Using Docker (Recommended - No Local Dependencies)**
+   ```bash
+   # Use the helper script (mounts current directory and uses existing generator)
+   ./generate_session.sh
+   
+   # Or run manually:
+   docker run -it --rm -v $(pwd):/app -w /app python:3.13-alpine sh -c "pip install telethon python-dotenv && python session_string_generator.py"
+   ```
+
+   **Option B: Using Local Python (Requires telethon installed)**
+   ```bash
+   python session_string_generator.py
+   ```
+
+   **What you'll need:**
+   - Your `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` from https://my.telegram.org/apps
+   - Your phone number (with country code, e.g., +1234567890)
+   - The verification code sent to your Telegram app
+
+4. **For network access, set these in your .env:**
    ```env
    MCP_SERVER_MODE=tcp
    MCP_SERVER_HOST=0.0.0.0

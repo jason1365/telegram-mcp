@@ -2452,8 +2452,17 @@ if __name__ == "__main__":
             await client.start()
 
             if MCP_SERVER_MODE == "tcp":
-                print(f"Telegram client started. Running MCP server in TCP mode on {MCP_SERVER_HOST}:{MCP_SERVER_PORT}...")
-                await mcp.run_tcp_async(host=MCP_SERVER_HOST, port=MCP_SERVER_PORT)
+                print(f"Telegram client started. Running MCP server in HTTP mode on {MCP_SERVER_HOST}:{MCP_SERVER_PORT}...")
+                # Use streamable-http transport for network access
+                import uvicorn
+                config = uvicorn.Config(
+                    mcp.streamable_http_app(),
+                    host=MCP_SERVER_HOST,
+                    port=MCP_SERVER_PORT,
+                    log_level="info"
+                )
+                server = uvicorn.Server(config)
+                await server.serve()
             else:
                 print("Telegram client started. Running MCP server in stdio mode...")
                 # Use the asynchronous entrypoint instead of mcp.run()
