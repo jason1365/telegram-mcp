@@ -194,14 +194,11 @@ This method uses the `docker-compose.yml` file and automatically reads your cred
 
     **Generate Session String (Required):**
     ```bash
-    # Using Docker (no local dependencies needed) - uses existing generator script
-    ./generate_session.sh
-    
-    # OR manually with Docker:
-    docker run -it --rm -v $(pwd):/app -w /app python:3.13-alpine sh -c "pip install telethon python-dotenv && python session_string_generator.py"
-    
-    # OR using local Python (requires telethon installed)
+    # Using the included generator
     python session_string_generator.py
+    
+    # OR using Docker (no local dependencies needed):
+    docker run -it --rm -v $(pwd):/app -w /app python:3.13-alpine sh -c "pip install telethon python-dotenv && python session_string_generator.py"
     ```
 2.  **Run Compose:**
     ```bash

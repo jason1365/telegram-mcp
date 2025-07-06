@@ -24,18 +24,12 @@ This guide explains how to set up Telegram MCP server on one machine and access 
 
 3. **Generate Telegram Session String (Required):**
 
-   **Option A: Using Docker (Recommended - No Local Dependencies)**
    ```bash
-   # Use the helper script (mounts current directory and uses existing generator)
-   ./generate_session.sh
-   
-   # Or run manually:
-   docker run -it --rm -v $(pwd):/app -w /app python:3.13-alpine sh -c "pip install telethon python-dotenv && python session_string_generator.py"
-   ```
-
-   **Option B: Using Local Python (Requires telethon installed)**
-   ```bash
+   # Using the included generator
    python session_string_generator.py
+   
+   # OR using Docker (no local dependencies needed):
+   docker run -it --rm -v $(pwd):/app -w /app python:3.13-alpine sh -c "pip install telethon python-dotenv && python session_string_generator.py"
    ```
 
    **What you'll need:**
