@@ -44,27 +44,35 @@ This guide explains how to set up Telegram MCP server on one machine and access 
    MCP_SERVER_PORT=8765
    ```
 
-4. **Start the server with network access:**
+4. **Start the server with proxy support:**
    
-   ⚠️ **Important**: Use `docker-compose.tcp.yml` (not `docker-compose.yml`) for network access!
+   ⚠️ **Important**: Use `docker-compose.proxy.yml` for full client compatibility!
    
    ```bash
    # Run in foreground (logs visible)
-   docker-compose -f docker-compose.tcp.yml up --build
+   docker-compose -f docker-compose.proxy.yml up --build
    
    # OR run in background (detached)
-   docker-compose -f docker-compose.tcp.yml up --build -d
+   docker-compose -f docker-compose.proxy.yml up --build -d
    
    # Check if running
-   docker-compose -f docker-compose.tcp.yml ps
+   docker-compose -f docker-compose.proxy.yml ps
    
    # Stop the server
-   docker-compose -f docker-compose.tcp.yml down
+   docker-compose -f docker-compose.proxy.yml down
    ```
+   
+   This starts TWO containers:
+   - `telegram-mcp-main`: Main server on port 8765 (Streamable HTTP)
+   - `telegram-mcp-proxy`: Client proxy on port 8766 (TCP bridge)
 
 ### Client Machine Setup
 
-Configure your MCP client to connect to the server's IP address:
+**No Docker required on client machine!** The server runs both the main service and a proxy for client compatibility.
+
+#### Simple Node.js Connection (Recommended)
+
+Configure Claude Desktop to connect to the proxy server on port 8766:
 
 **For Claude Desktop** (`claude_desktop_config.json`):
 ```json
@@ -72,7 +80,7 @@ Configure your MCP client to connect to the server's IP address:
   "mcpServers": {
     "telegram": {
       "command": "node",
-      "args": ["-e", "const net = require('net'); const client = net.createConnection(8765, '192.168.1.100'); process.stdin.pipe(client); client.pipe(process.stdout);"],
+      "args": ["-e", "const net = require('net'); const client = net.createConnection(8766, '192.168.1.100'); process.stdin.pipe(client); client.pipe(process.stdout);"],
       "env": {}
     }
   }
@@ -85,7 +93,7 @@ Configure your MCP client to connect to the server's IP address:
   "mcpServers": {
     "telegram": {
       "command": "node",
-      "args": ["-e", "const net = require('net'); const client = net.createConnection(8765, '192.168.1.100'); process.stdin.pipe(client); client.pipe(process.stdout);"]
+      "args": ["-e", "const net = require('net'); const client = net.createConnection(8766, '192.168.1.100'); process.stdin.pipe(client); client.pipe(process.stdout);"]
     }
   }
 }
@@ -93,20 +101,25 @@ Configure your MCP client to connect to the server's IP address:
 
 Replace `192.168.1.100` with your server machine's IP address.
 
+**Why port 8766?** The server runs a proxy on port 8766 that translates between Claude Desktop's TCP connection and the main server's HTTP protocol, solving transport compatibility issues.
+
 ## 📋 Configuration Options
 
 ### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MCP_SERVER_MODE` | `stdio` | Set to `tcp` for network access |
+| `MCP_SERVER_MODE` | `stdio` | Set to `tcp` for network access, `proxy` for proxy mode |
 | `MCP_SERVER_HOST` | `127.0.0.1` | Bind address (use `0.0.0.0` for network access) |
 | `MCP_SERVER_PORT` | `8765` | TCP port for network mode |
+| `PROXY_TARGET_HOST` | `127.0.0.1` | Target server host (for proxy mode) |
+| `PROXY_TARGET_PORT` | `8765` | Target server port (for proxy mode) |
 
 ### Docker Compose Files
 
-- `docker-compose.yml` - Original secure setup (localhost only)
+- `docker-compose.yml` - Original secure setup (localhost only)  
 - `docker-compose.tcp.yml` - Network-accessible setup with port exposure
+- `docker-compose.proxy.yml` - **Recommended**: Dual setup with main server + client proxy
 
 ## 🛡️ Security Considerations
 
@@ -118,10 +131,12 @@ Replace `192.168.1.100` with your server machine's IP address.
 ## 🔧 Troubleshooting
 
 ### Connection Issues
-- Verify server is running: `docker ps`
-- Check server logs: `docker logs telegram-mcp-tcp`
-- Test connectivity: `telnet <server-ip> 8765`
-- Verify firewall allows port 8765
+- Verify servers are running: `docker ps`
+- Check main server logs: `docker logs telegram-mcp-main`
+- Check proxy server logs: `docker logs telegram-mcp-proxy`
+- Test main server: `telnet <server-ip> 8765`
+- Test proxy server: `telnet <server-ip> 8766`
+- Verify firewall allows ports 8765 and 8766
 
 ### Client Configuration
 - Ensure correct server IP address in client config

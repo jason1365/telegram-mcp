@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  # Main Telegram MCP Server (Streamable HTTP)
+  telegram-mcp-main:
+    build: .
+    container_name: telegram-mcp-main
+    restart: unless-stopped
+    environment:
+      - MCP_SERVER_MODE=tcp
+      - MCP_SERVER_HOST=0.0.0.0
+      - MCP_SERVER_PORT=8765
+      # Add your Telegram credentials here or via .env file
+      - TELEGRAM_API_ID=${TELEGRAM_API_ID}
+      - TELEGRAM_API_HASH=${TELEGRAM_API_HASH}
+      - TELEGRAM_SESSION_STRING=${TELEGRAM_SESSION_STRING}
+    volumes:
+      - ./.env:/app/.env:ro
+    ports:
+      - "8765:8765"  # Streamable HTTP port
+    networks:
+      - telegram-mcp-network
+
+  # Proxy Server (TCP-to-HTTP bridge for Claude Desktop)
+  telegram-mcp-proxy:
+    build: .
+    container_name: telegram-mcp-proxy
+    restart: unless-stopped
+    environment:
+      - MCP_SERVER_MODE=proxy
+      - MCP_SERVER_HOST=0.0.0.0
+      - MCP_SERVER_PORT=8766
+      # Target the main server container
+      - PROXY_TARGET_HOST=telegram-mcp-main
+      - PROXY_TARGET_PORT=8765
+    ports:
+      - "8766:8766"  # Proxy port for Claude Desktop
+    depends_on:
+      - telegram-mcp-main
+    networks:
+      - telegram-mcp-network
+
+networks:
+  telegram-mcp-network:
+    driver: bridge
