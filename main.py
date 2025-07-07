@@ -12,7 +12,6 @@ from typing import List, Dict, Optional, Union, Any
 # Third-party libraries
 import nest_asyncio
 from dotenv import load_dotenv
-from mcp.server.fastmcp import FastMCP
 from telethon import TelegramClient, functions, utils
 from telethon.sessions import StringSession
 from telethon.tl.types import (
@@ -45,21 +44,51 @@ def json_serializer(obj):
 
 load_dotenv()
 
-TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
-TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
-TELEGRAM_SESSION_NAME = os.getenv("TELEGRAM_SESSION_NAME")
+# MCP Server configuration (read first to determine mode)
+MCP_SERVER_MODE = os.getenv("MCP_SERVER_MODE", "stdio").lower()  # stdio, tcp, or proxy
+
+# Telegram credentials (only required for non-proxy modes)
+if MCP_SERVER_MODE != "proxy":
+    TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
+    TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
+    TELEGRAM_SESSION_NAME = os.getenv("TELEGRAM_SESSION_NAME")
+else:
+    # Proxy mode doesn't need Telegram credentials
+    TELEGRAM_API_ID = None
+    TELEGRAM_API_HASH = None
+    TELEGRAM_SESSION_NAME = None
 
 # Check if a string session exists in environment, otherwise use file-based session
-SESSION_STRING = os.getenv("TELEGRAM_SESSION_STRING")
+SESSION_STRING = os.getenv("TELEGRAM_SESSION_STRING") if MCP_SERVER_MODE != "proxy" else None
 
-mcp = FastMCP("telegram")
+# Additional MCP Server configuration
+MCP_SERVER_HOST = os.getenv("MCP_SERVER_HOST", "127.0.0.1")  # Default to localhost for security
+MCP_SERVER_PORT = int(os.getenv("MCP_SERVER_PORT", "8765"))
 
-if SESSION_STRING:
-    # Use the string session if available
-    client = TelegramClient(StringSession(SESSION_STRING), TELEGRAM_API_ID, TELEGRAM_API_HASH)
+# Proxy configuration (for proxy mode)
+PROXY_TARGET_HOST = os.getenv("PROXY_TARGET_HOST", "127.0.0.1")
+PROXY_TARGET_PORT = int(os.getenv("PROXY_TARGET_PORT", "8765"))
+PROXY_TARGET_URL = f"http://{PROXY_TARGET_HOST}:{PROXY_TARGET_PORT}/mcp/"
+
+# Initialize MCP server or proxy based on mode
+if MCP_SERVER_MODE == "proxy":
+    # Import jlowin's fastmcp for proxy functionality
+    from fastmcp import FastMCP as ProxyFastMCP
+    # Create a proxy to the remote server
+    mcp = ProxyFastMCP.as_proxy(PROXY_TARGET_URL, name="Telegram MCP Proxy")
+    client = None  # No Telegram client needed for proxy mode
 else:
-    # Use file-based session
-    client = TelegramClient(TELEGRAM_SESSION_NAME, TELEGRAM_API_ID, TELEGRAM_API_HASH)
+    # Import official MCP SDK's FastMCP for regular server mode
+    from mcp.server.fastmcp import FastMCP
+    # Regular MCP server mode
+    mcp = FastMCP("telegram")
+    
+    if SESSION_STRING:
+        # Use the string session if available
+        client = TelegramClient(StringSession(SESSION_STRING), TELEGRAM_API_ID, TELEGRAM_API_HASH)
+    else:
+        # Use file-based session
+        client = TelegramClient(TELEGRAM_SESSION_NAME, TELEGRAM_API_ID, TELEGRAM_API_HASH)
 
 # Setup robust logging with both file and console output
 logger = logging.getLogger("telegram_mcp")
@@ -2440,22 +2469,259 @@ async def get_pinned_messages(chat_id: int) -> str:
 if __name__ == "__main__":
     nest_asyncio.apply()
 
-    async def main() -> None:
-        try:
-            # Start the Telethon client non-interactively
-            print("Starting Telegram client...")
-            await client.start()
-
-            print("Telegram client started. Running MCP server...")
-            # Use the asynchronous entrypoint instead of mcp.run()
-            await mcp.run_stdio_async()
-        except Exception as e:
-            print(f"Error starting client: {e}", file=sys.stderr)
-            if isinstance(e, sqlite3.OperationalError) and "database is locked" in str(e):
-                print(
-                    "Database lock detected. Please ensure no other instances are running.",
-                    file=sys.stderr,
+    if MCP_SERVER_MODE == "proxy":
+        # Handle proxy mode with custom TCP-to-HTTP bridge
+        async def main() -> None:
+            try:
+                print(f"Starting TCP-to-HTTP proxy connecting to {PROXY_TARGET_URL}...")
+                print(f"Proxy will listen on TCP {MCP_SERVER_HOST}:{MCP_SERVER_PORT} for Claude Desktop...")
+                
+                # Start the TCP proxy server
+                import json
+                import asyncio
+                import httpx
+                
+                async def handle_client(reader, writer):
+                    """Handle incoming TCP connection from Claude Desktop"""
+                    client_addr = writer.get_extra_info('peername')
+                    print(f"New client connected: {client_addr}")
+                    
+                    # Session state for this client connection
+                    session_id = None
+                    # Use persistent HTTP client for session management
+                    http_client = httpx.AsyncClient(timeout=30.0)
+                    
+                    try:
+                        while True:
+                            # Read JSON-RPC message from TCP stream
+                            data = await reader.readline()
+                            if not data:
+                                print("Client closed connection")
+                                break
+                            
+                            # Skip empty lines
+                            line = data.decode().strip()
+                            if not line:
+                                continue
+                                
+                            try:
+                                # Parse the JSON-RPC message
+                                message = json.loads(line)
+                                print(f"Received from client: {message}")
+                                
+                                # Prepare headers for HTTP request
+                                headers = {
+                                    "Content-Type": "application/json",
+                                    "Accept": "application/json, text/event-stream"
+                                }
+                                
+                                # Handle notifications (messages without id field)
+                                is_notification = "id" not in message
+                                if is_notification:
+                                    print(f"Handling notification: {message.get('method')}")
+                                
+                                # Include session ID in headers for subsequent requests
+                                target_url = PROXY_TARGET_URL
+                                if session_id and message.get("method") != "initialize":
+                                    # Include session ID in headers for StreamableHTTP
+                                    headers["MCP-Session-ID"] = session_id
+                                    print(f"Including session ID in headers: {session_id}")
+                                print(f"Using URL: {target_url}")
+                                
+                                # Forward to HTTP server using persistent client for session management
+                                response = await http_client.post(
+                                    target_url,
+                                    json=message,
+                                    headers=headers,
+                                    follow_redirects=True
+                                )
+                                
+                                print(f"HTTP response status: {response.status_code}")
+                                print(f"HTTP response headers: {dict(response.headers)}")
+                                print(f"HTTP response content (first 200 chars): {response.text[:200]}")
+                                
+                                if response.status_code == 200:
+                                    try:
+                                        # Capture session ID from response headers (for initialize requests)
+                                        if message.get("method") == "initialize" and "mcp-session-id" in response.headers:
+                                            session_id = response.headers["mcp-session-id"]
+                                            print(f"Captured session ID: {session_id}")
+                                            
+                                        # Handle both JSON and streaming responses
+                                        content_type = response.headers.get("content-type", "")
+                                        if "application/json" in content_type:
+                                            response_data = response.json()
+                                            print(f"Response from server (JSON): {response_data}")
+                                            
+                                            # Only send response if it's not a notification
+                                            if not is_notification:
+                                                response_line = json.dumps(response_data) + "\n"
+                                                writer.write(response_line.encode())
+                                                await writer.drain()
+                                            else:
+                                                print("Notification processed, no response sent")
+                                                
+                                        elif "text/event-stream" in content_type or "stream" in content_type:
+                                            # Handle streaming response - parse each line
+                                            print("Handling streaming response")
+                                            lines = response.text.strip().split('\n')
+                                            for resp_line in lines:
+                                                resp_line = resp_line.strip()
+                                                if resp_line.startswith('data: '):
+                                                    resp_line = resp_line[6:]  # Remove 'data: ' prefix
+                                                if resp_line and resp_line != '[DONE]':
+                                                    try:
+                                                        response_data = json.loads(resp_line)
+                                                        print(f"Streaming response data: {response_data}")
+                                                        
+                                                        # Only send response if it's not a notification
+                                                        if not is_notification:
+                                                            response_line = json.dumps(response_data) + "\n"
+                                                            writer.write(response_line.encode())
+                                                            await writer.drain()
+                                                        else:
+                                                            print("Notification processed (streaming), no response sent")
+                                                    except json.JSONDecodeError:
+                                                        print(f"Skipping non-JSON streaming line: {resp_line}")
+                                                        continue
+                                        else:
+                                            # Try to parse as JSON anyway
+                                            response_data = json.loads(response.text)
+                                            print(f"Response from server (fallback JSON): {response_data}")
+                                            
+                                            # Only send response if it's not a notification
+                                            if not is_notification:
+                                                response_line = json.dumps(response_data) + "\n"
+                                                writer.write(response_line.encode())
+                                                await writer.drain()
+                                            else:
+                                                print("Notification processed (fallback), no response sent")
+                                                
+                                    except json.JSONDecodeError as parse_err:
+                                        print(f"Failed to parse server response as JSON: {parse_err}")
+                                        print(f"Raw response: {response.text}")
+                                        # Send error response back to client (only for requests, not notifications)
+                                        if not is_notification:
+                                            error_response = {
+                                                "jsonrpc": "2.0",
+                                                "id": message.get("id"),
+                                                "error": {
+                                                    "code": -32700,
+                                                    "message": f"Parse error: Server response not valid JSON"
+                                                }
+                                            }
+                                            response_line = json.dumps(error_response) + "\n"
+                                            writer.write(response_line.encode())
+                                            await writer.drain()
+                                        else:
+                                            print("Notification parse error, no response sent")
+                                else:
+                                    print(f"HTTP error {response.status_code}: {response.text}")
+                                    # Send error response back to client (only for requests, not notifications)  
+                                    if not is_notification:
+                                        error_response = {
+                                            "jsonrpc": "2.0",
+                                            "id": message.get("id"),
+                                            "error": {
+                                                "code": -32000,
+                                                "message": f"HTTP {response.status_code}: {response.text[:100]}"
+                                            }
+                                        }
+                                        response_line = json.dumps(error_response) + "\n"
+                                        writer.write(response_line.encode())
+                                        await writer.drain()
+                                    else:
+                                        print("Notification HTTP error, no response sent")
+                                
+                            except json.JSONDecodeError as e:
+                                print(f"Invalid JSON from client: {e} - Line: '{line}'")
+                                continue  # Don't break, just skip this line
+                            except Exception as e:
+                                print(f"Error forwarding request: {e}")
+                                import traceback
+                                traceback.print_exc()
+                                # Send error response back to client (only for requests, not notifications)
+                                try:
+                                    message = json.loads(line)
+                                    is_notification = "id" not in message
+                                    if not is_notification:
+                                        error_response = {
+                                            "jsonrpc": "2.0", 
+                                            "id": message.get("id", "error"),
+                                            "error": {"code": -32603, "message": str(e)}
+                                        }
+                                        response_line = json.dumps(error_response) + "\n"
+                                        writer.write(response_line.encode())
+                                        await writer.drain()
+                                    else:
+                                        print("Notification error, no response sent")
+                                except:
+                                    # If we can't parse the message, send a generic error
+                                    error_response = {
+                                        "jsonrpc": "2.0", 
+                                        "id": "error",
+                                        "error": {"code": -32603, "message": str(e)}
+                                    }
+                                    response_line = json.dumps(error_response) + "\n"
+                                    writer.write(response_line.encode())
+                                    await writer.drain()
+                                break
+                                
+                    except Exception as e:
+                        print(f"Client connection error: {e}")
+                    finally:
+                        await http_client.aclose()
+                        print(f"Client disconnected: {client_addr}")
+                        writer.close()
+                        await writer.wait_closed()
+                
+                # Start TCP server
+                server = await asyncio.start_server(
+                    handle_client, 
+                    MCP_SERVER_HOST, 
+                    MCP_SERVER_PORT
                 )
-            sys.exit(1)
+                
+                print(f"TCP proxy server started on {MCP_SERVER_HOST}:{MCP_SERVER_PORT}")
+                async with server:
+                    await server.serve_forever()
+                    
+            except Exception as e:
+                print(f"Error starting proxy: {e}", file=sys.stderr)
+                sys.exit(1)
+        
+        asyncio.run(main())
+    else:
+        # Handle regular server mode asynchronously using official MCP SDK
+        async def main() -> None:
+            try:
+                # Start the Telethon client non-interactively
+                print("Starting Telegram client...")
+                await client.start()
 
-    asyncio.run(main())
+                if MCP_SERVER_MODE == "tcp":
+                    print(f"Telegram client started. Running MCP server in HTTP mode on {MCP_SERVER_HOST}:{MCP_SERVER_PORT}...")
+                    # Use streamable-http transport for network access
+                    import uvicorn
+                    config = uvicorn.Config(
+                        mcp.streamable_http_app(),
+                        host=MCP_SERVER_HOST,
+                        port=MCP_SERVER_PORT,
+                        log_level="info"
+                    )
+                    server = uvicorn.Server(config)
+                    await server.serve()
+                else:
+                    print("Telegram client started. Running MCP server in stdio mode...")
+                    # Use the asynchronous entrypoint instead of mcp.run()
+                    await mcp.run_stdio_async()
+            except Exception as e:
+                print(f"Error starting client: {e}", file=sys.stderr)
+                if isinstance(e, sqlite3.OperationalError) and "database is locked" in str(e):
+                    print(
+                        "Database lock detected. Please ensure no other instances are running.",
+                        file=sys.stderr,
+                    )
+                sys.exit(1)
+
+        asyncio.run(main())
